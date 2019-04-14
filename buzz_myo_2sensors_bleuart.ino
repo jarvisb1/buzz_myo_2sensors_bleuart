@@ -30,8 +30,8 @@ uint8_t motor_mux_ports[NUM_MOTORS] = {2, 3, 4, 5};
 
 #define NUM_LONG_BUZZ_MOTORS 2
 #define NUM_SHORT_BUZZ_MOTORS 2
-uint8_t long_buzz_ports[NUM_LONG_BUZZ_MOTORS] = {2, 3};
-uint8_t short_buzz_ports[NUM_SHORT_BUZZ_MOTORS] = {4, 5};
+uint8_t long_buzz_ports[NUM_LONG_BUZZ_MOTORS] = {3, 4};
+uint8_t short_buzz_ports[NUM_SHORT_BUZZ_MOTORS] = {5, 2}; //assumed L, R
 
 struct sensor_motor_group {
   float xv[NZEROS + 1];
@@ -44,6 +44,30 @@ struct sensor_motor_group {
 
 sensor_motor_group left_group;
 sensor_motor_group right_group;
+
+void do_buzz(uint8_t mux_port, uint8_t effect, uint8_t repeat = 0)
+{
+  tcaselect(mux_port);
+
+  drv.setWaveform(0, effect);  // play effect 
+  uint8_t repeat_i = 0;
+  for (repeat_i = 0; repeat_i < repeat; repeat_i++)
+    drv.setWaveform(repeat_i+1, effect);
+
+  drv.setWaveform(repeat_i+1, 0);       // end waveform
+
+  // play the effect!
+  drv.go();  
+}
+
+void do_triple_buzz(uint8_t mux_port)
+{
+  for (uint8_t i = 0; i < 3; i++)
+  {  
+    do_buzz(mux_port, 14);
+    delay(250);
+  }
+}
 
 //////////////////
 //BLE setup
@@ -77,7 +101,37 @@ class MyCallbacks: public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic *pCharacteristic) {
       std::string rxValue = pCharacteristic->getValue();
 
-      if (rxValue.length() > 0) {
+      if (rxValue.length() > 4) {
+        if (rxValue[0] == '!' && rxValue[1] == 'B' && rxValue[3] == '1')
+        {
+          switch(rxValue[2]) {
+            case '1':
+              do_buzz(left_group.motor_port, EFFECT_LONG);
+              break;
+            case '2':
+              do_buzz(right_group.motor_port, EFFECT_LONG);
+              break;
+            case '3':
+              do_buzz(short_buzz_ports[0], EFFECT_LONG);
+              break;
+            case '4':
+              do_buzz(short_buzz_ports[1], EFFECT_LONG);
+              break;
+            case '5':
+              left_group.threshold += 25;
+              right_group.threshold += 25;
+              Serial.printf("NEW THRESHOLD: %d\n", left_group.threshold);
+
+              break;
+            case '6':
+              left_group.threshold -= 25;
+              right_group.threshold -= 25;
+              Serial.printf("NEW THRESHOLD: %d\n", left_group.threshold);
+              break;
+            default:
+              break;
+          }
+        }
         //writeback the received string
         //send_chararray = (unsigned char *)const_cast<char*>(rxValue.c_str());
         //pTxCharacteristic->setValue(send_chararray, rxValue.length());
@@ -151,40 +205,16 @@ void setup() {
   }
 
   left_group.pin = A2;
-  left_group.motor_port = 2;
+  left_group.motor_port = 3;
   left_group.filter_out = 0;
   left_group.threshold = DEFAULT_HAPTIC_THRESHOLD;
   
   right_group.pin = A3;
-  right_group.motor_port = 3;
+  right_group.motor_port = 4;
   right_group.filter_out = 0;
   right_group.threshold = DEFAULT_HAPTIC_THRESHOLD;
 
   setup_ble(); //This blocks until a connection occurs
-}
-
-void do_buzz(uint8_t mux_port, uint8_t effect, uint8_t repeat = 0)
-{
-  tcaselect(mux_port);
-
-  drv.setWaveform(0, effect);  // play effect 
-  uint8_t repeat_i = 0;
-  for (repeat_i = 0; repeat_i < repeat; repeat_i++)
-    drv.setWaveform(repeat_i+1, effect);
-
-  drv.setWaveform(repeat_i+1, 0);       // end waveform
-
-  // play the effect!
-  drv.go();  
-}
-
-void do_triple_buzz(uint8_t mux_port)
-{
-  for (uint8_t i = 0; i < 3; i++)
-  {  
-    do_buzz(mux_port, 14);
-    delay(250);
-  }
 }
 
 void send_message()
